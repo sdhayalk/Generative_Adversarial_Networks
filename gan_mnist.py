@@ -4,23 +4,27 @@ import numpy as np
 def get_dataset():
     from tensorflow.examples.tutorials.mnist import input_data
     mnist = input_data.read_data_sets('MNIST_data/', one_hot=True)
-    dataset_train_feautres = mnist.train.images
+    dataset_train_features = mnist.train.images
     dataset_train_labels = mnist.train.labels
-    dataset_test_feautres = mnist.test.images
+    dataset_test_features = mnist.test.images
     dataset_test_labels = mnist.test.labels
 
-    print('dataset_train_feautres.shape: ', dataset_train_feautres.shape)
+    print('dataset_train_features.shape: ', dataset_train_features.shape)
     print('dataset_train_labels.shape: ', dataset_train_labels.shape)
-    print('dataset_test_feautres.shape: ', dataset_test_feautres.shape)
+    print('dataset_test_features.shape: ', dataset_test_features.shape)
     print('dataset_test_labels.shape: ', dataset_test_labels.shape)
 
-    return dataset_train_feautres, dataset_train_labels, dataset_test_feautres, dataset_test_labels
+    return dataset_train_features, dataset_train_labels, dataset_test_features, dataset_test_labels
 
 #Xavier initialization: https://prateekvjoshi.com/2016/03/29/understanding-xavier-initialization-in-deep-neural-networks/
 def xavier_init(shape):
     input_nodes = shape[0]
     stddev_xavier = 1. / tf.sqrt(input_nodes/2.)
     return tf.random_normal(shape=shape, stddev=stddev_xavier)
+
+
+def generate_noise(batch_size):
+    return np.random.uniform(-1., 1., size=[batch_size, 100])
 
 
 def generator(z):
@@ -63,7 +67,7 @@ def discriminator(x):
 
 #main:
 
-get_dataset()
+dataset_train_features, dataset_train_labels, dataset_test_features, dataset_test_labels = get_dataset()
 
 X = tf.placeholder(tf.float32, shape=[None, 784])
 Z = tf.placeholder(tf.float32, shape=[None, 100])
@@ -75,9 +79,36 @@ discriminator_fake, discriminator_grid_fake, discriminator_var_list_fake = discr
 generator_loss = tf.reduce_mean(
                     tf.nn.sigmoid_cross_entropy_with_logits(logits=discriminator_grid_fake, labels=tf.ones_like(discriminator_grid_fake))
                     )
+generator_optimizer = tf.train.AdamOptimizer().minimize(generator_loss, var_list=generator_var_list)
 
 discriminator_loss = tf.reduce_mean(
                         tf.nn.sigmoid_cross_entropy_with_logits(logits=discriminator_grid_real, labels=tf.ones_like(discriminator_grid_real))
                         ) + tf.reduce_mean(
                         tf.nn.sigmoid_cross_entropy_with_logits(logits=discriminator_grid_fake, labels=tf.zeros_like(discriminator_grid_fake))
-                    )
+                        )
+discriminator_optimizer = tf.train.AdamOptimizer().minimize(discriminator_loss, var_list=discriminator_var_list_real)   #can use any one of discriminator_var_list_real or discriminator_var_list_fake
+
+sess = tf.Session()
+sess.run(tf.global_variables_initializer())
+
+from tensorflow.examples.tutorials.mnist import input_data
+mnist = input_data.read_data_sets('MNIST_data/', one_hot=True)
+temp, _ = mnist.train.next_batch(128)
+print(temp.shape)
+
+batch_size = 550
+for epoch in range(0, 1000):
+    for batch in range(0, dataset_train_features.shape[0]):
+        noise = generate_noise(batch_size)
+        dataset_train_features_batch = dataset_train_features[batch : batch+batch_size]
+        # print('noise.shape:', noise.shape)
+        # print('dataset_train_features_batch.shape:', dataset_train_features_batch.shape)
+
+        _, discriminator_loss_temp = sess.run([discriminator_optimizer, discriminator_loss], feed_dict={X: dataset_train_features, Z: noise})
+        _, generator_loss_temp = sess.run([generator_optimizer, generator_loss], feed_dict={Z: noise})
+
+        batch = batch + batch_size
+
+        print('Epoch:', epoch, '\tbatch:', batch)
+        print('\tgenerator loss:', generator_loss_temp)
+        print('\tdiscriminator loss:', discriminator_loss_temp)
